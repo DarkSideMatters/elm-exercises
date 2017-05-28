@@ -3,6 +3,8 @@ import Html.Attributes exposing (..)
 import Html.Events exposing (..)
 import WebSocket
 import List
+import Json.Decode as Decode
+import Json.Encode as Encode
 
 main: Program Never Model Msg
 main =
@@ -15,13 +17,14 @@ main =
 
  -- MODEL
 type alias Model =
-  { chatMessage : String
+  { chatMessage : List String
   , userMessage : String
+  , userName : String
   }
 
 init : (Model, Cmd Msg)
 init =
-  ( Model "" ""
+  ( Model [""] "" ""
   , Cmd.none
   )
 
@@ -35,6 +38,8 @@ type Msg
   = PostChatMessage
   | UpdateUserMessage String
   | NewChatMessage String
+  | Login
+  | LoginMessage String
 
 update : Msg -> Model -> (Model, Cmd Msg)
 update msg model =
@@ -49,20 +54,48 @@ update msg model =
       { model | userMessage = message } ! []
 
     NewChatMessage message ->
-        { model | chatMessage = message } ! []
+       { model | chatMessage = jsonToString (Decode.decodeString (Decode.field "content" Decode.string) message) :: model.chatMessage } ! []
 
+    Login ->
+        let
+          login = Encode.object [ ("command", Encode.string "login"), ("content", Encode.string model.userName)]
+        in
+          {model | userName = ""} ! [WebSocket.send "ws://localhost:3000/" (Encode.encode 0 login)]
+
+    LoginMessage message ->
+      {model | userName = message} ! []
 -- VIEW
 view : Model -> Html Msg
 view model =
   div []
-    [ input [ placeholder "message..."
+    [
+    input [ placeholder "login..."
+            , autofocus True
+            , onInput LoginMessage
+            ] []
+    , button [ onClick Login ] [ text "Login" ]
+    , br []  []
+    , div [] []
+    , input [ placeholder "message..."
             , autofocus True
             , value model.userMessage
             , onInput UpdateUserMessage
             ] []
     , button [ onClick PostChatMessage ] [ text "Submit" ]
-    , div [] [ text model.chatMessage ]
+    , div []  (List.map cMessage model.chatMessage)
   ]
+
+
+jsonToString : Result String String -> String
+jsonToString result =
+  case result of
+    Ok result -> result
+    Err result -> "Error"
+
+cMessage : String -> Html msg
+cMessage message =
+  div [] [text message]
+
 
  -- SUBSCRIPTIONS
 subscriptions : Model -> Sub Msg
